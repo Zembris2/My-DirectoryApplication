@@ -65,12 +65,20 @@ class TagRepository {
     await load();
   }
 
-  /// ลบกลุ่ม แล้วย้ายคนที่อยู่กลุ่มนั้นไปกลุ่มทั่วไป
+  /// ลบกลุ่ม แล้วย้ายคนที่อยู่กลุ่มนั้นไปกลุ่มที่เหลืออยู่กลุ่มแรก
   ///
   /// ไม่ลบผู้ติดต่อตามไปด้วยเด็ดขาด เพราะผู้ใช้ตั้งใจจะลบแค่กลุ่ม
   /// การเผลอลบคนทิ้งด้วยคือความเสียหายที่กู้กลับไม่ได้
-  Future<void> delete(ContactTag tag) async {
-    if (tag.isBuiltin) return;
+  ///
+  /// ลบได้ทุกกลุ่มรวมถึงกลุ่มที่มีมาให้ตั้งแต่แรก แต่กันไว้ไม่ให้ลบกลุ่มสุดท้าย
+  /// เพราะถ้าไม่เหลือกลุ่มเลย จะไม่มีที่ให้ย้ายคนไป และแถบกรองจะว่างจนใช้งานไม่ได้
+  /// คืนค่า false เมื่อลบไม่ได้ เพื่อให้หน้าจอบอกเหตุผลกับผู้ใช้ได้
+  Future<bool> delete(ContactTag tag) async {
+    final remaining =
+        ContactTag.all.where((item) => item.label != tag.label).toList();
+    if (remaining.isEmpty) return false;
+
+    final fallback = remaining.first.label;
 
     final db = await _helper.database;
     await db.transaction((txn) async {
@@ -81,13 +89,14 @@ class TagRepository {
       );
       await txn.update(
         DatabaseHelper.tableContacts,
-        {'tag': ContactTag.general.label},
+        {'tag': fallback},
         where: 'tag = ?',
         whereArgs: [tag.label],
       );
     });
 
     await load();
+    return true;
   }
 
   /// นับจำนวนคนในแต่ละกลุ่ม ใช้เตือนก่อนลบว่ากลุ่มนี้มีคนอยู่กี่คน

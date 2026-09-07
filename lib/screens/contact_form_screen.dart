@@ -73,7 +73,8 @@ class _ContactFormScreenState extends State<ContactFormScreen> {
     _lineController = TextEditingController(text: initial?.lineId ?? '');
     _facebookController = TextEditingController(text: initial?.facebook ?? '');
     _isFavorite = initial?.isFavorite ?? false;
-    _tag = initial?.tag ?? widget.defaultTag;
+    // ผ่าน fromLabel เสมอ เผื่อกลุ่มเดิมของคนนี้ถูกลบไปแล้ว จะได้ตกมาที่กลุ่มที่ยังมีอยู่
+    _tag = ContactTag.fromLabel((initial?.tag ?? widget.defaultTag).label);
     _avatarEmoji = initial?.avatarEmoji ?? '';
     _avatarColor = initial?.avatarColor ?? -1;
     _avatarImage = initial?.avatarImage;
@@ -98,13 +99,16 @@ class _ContactFormScreenState extends State<ContactFormScreen> {
   /// เปิดปฏิทินให้เลือกวันเกิด
   ///
   /// จำกัดไม่ให้เลือกวันในอนาคต เพราะไม่มีใครเกิดวันข้างหน้า
-  /// และเปิดปฏิทินไว้ที่ปีที่เคยเลือกไว้แล้ว จะได้ไม่ต้องเลื่อนใหม่ทุกครั้ง
+  /// ถ้าเคยเลือกไว้แล้วจะเปิดที่วันเดิม แต่ถ้ายังไม่เคยเลือก
+  /// จะเปิดหน้าเลือก "ปี" ก่อนเลย ไม่เดาปีให้ผู้ใช้
+  /// เพราะการเดาปีทำให้เผลอกดตกลงแล้วได้ปีที่ไม่ใช่ของจริงติดไปกับข้อมูล
   Future<void> _pickBirthday() async {
     final today = DateTime.now();
     final picked = await showDatePicker(
       context: context,
-      initialDate:
-          _birthday ?? DateTime(today.year - 20, today.month, today.day),
+      initialDate: _birthday ?? today,
+      initialDatePickerMode:
+          _birthday == null ? DatePickerMode.year : DatePickerMode.day,
       firstDate: DateTime(1900),
       lastDate: today,
       helpText: 'เลือกวันเกิด',

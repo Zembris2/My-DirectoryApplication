@@ -52,6 +52,8 @@ class _TagsScreenState extends State<TagsScreen> {
 
   Future<void> _confirmDelete(ContactTag tag) async {
     final used = _counts[tag.label] ?? 0;
+    final fallback =
+        _tags.firstWhere((item) => item.label != tag.label).label;
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -62,7 +64,7 @@ class _TagsScreenState extends State<TagsScreen> {
           used == 0
               ? 'กลุ่มนี้ยังไม่มีใครอยู่ ลบได้เลย'
               : 'มี $used รายชื่ออยู่ในกลุ่มนี้ '
-                  'คนเหล่านั้นจะถูกย้ายไปกลุ่ม "ทั่วไป" ไม่ได้ถูกลบทิ้ง',
+                  'คนเหล่านั้นจะถูกย้ายไปกลุ่ม "$fallback" ไม่ได้ถูกลบทิ้ง',
         ),
         actions: [
           TextButton(
@@ -81,6 +83,15 @@ class _TagsScreenState extends State<TagsScreen> {
     if (confirmed != true) return;
     await _repository.delete(tag);
     await _load();
+  }
+
+  /// เตือนเมื่อผู้ใช้กดลบกลุ่มสุดท้าย ต้องเหลือไว้อย่างน้อยหนึ่งกลุ่มเสมอ
+  void _warnLastTag() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('ต้องเหลือไว้อย่างน้อย 1 กลุ่ม ลองสร้างกลุ่มใหม่ก่อนแล้วค่อยลบกลุ่มนี้'),
+      ),
+    );
   }
 
   @override
@@ -113,8 +124,9 @@ class _TagsScreenState extends State<TagsScreen> {
                           tag: tag,
                           used: _counts[tag.label] ?? 0,
                           onEdit: () => _openEditor(existing: tag),
-                          onDelete:
-                              tag.isBuiltin ? null : () => _confirmDelete(tag),
+                          onDelete: _tags.length > 1
+                              ? () => _confirmDelete(tag)
+                              : _warnLastTag,
                         );
                       },
                     ),
@@ -141,14 +153,10 @@ class _TagRow extends StatelessWidget {
   final ContactTag tag;
   final int used;
   final VoidCallback onEdit;
-
-  /// null เมื่อลบไม่ได้ ปุ่มจะถูกซ่อนไปเลยแทนที่จะขึ้นแล้วกดไม่ได้
-  final VoidCallback? onDelete;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
-    final onDelete = this.onDelete;
-
     return Card(
       child: ListTile(
         onTap: onEdit,
@@ -162,7 +170,7 @@ class _TagRow extends StatelessWidget {
         ),
         title: Text(tag.label, style: Theme.of(context).textTheme.bodyMedium),
         subtitle: Text(
-          tag.isBuiltin ? 'กลุ่มพื้นฐาน · $used รายชื่อ' : '$used รายชื่อ',
+          '$used รายชื่อ',
           style: Theme.of(context).textTheme.bodySmall,
         ),
         trailing: Row(
@@ -174,12 +182,11 @@ class _TagRow extends StatelessWidget {
               icon: const Icon(Icons.edit_outlined,
                   color: AppColors.textSecondary),
             ),
-            if (onDelete != null)
-              IconButton(
-                tooltip: 'ลบกลุ่ม',
-                onPressed: onDelete,
-                icon: const Icon(Icons.delete_outline, color: AppColors.danger),
-              ),
+            IconButton(
+              tooltip: 'ลบกลุ่ม',
+              onPressed: onDelete,
+              icon: const Icon(Icons.delete_outline, color: AppColors.danger),
+            ),
           ],
         ),
         shape: RoundedRectangleBorder(

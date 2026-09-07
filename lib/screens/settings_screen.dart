@@ -96,7 +96,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 children: [
                   _ChoiceRow<ContactTag>(
                     label: 'กลุ่มที่เลือกไว้ให้',
-                    value: widget.settings.defaultTag,
+                    // เทียบกับรายการกลุ่มปัจจุบันก่อน เผื่อกลุ่มที่เคยตั้งไว้ถูกลบไปแล้ว
+                    value: ContactTag.fromLabel(widget.settings.defaultTag.label),
                     choices: {
                       for (final tag in ContactTag.all) tag: tag.label,
                     },
