@@ -127,6 +127,33 @@ class ContactRepository {
     return update(contact.copyWith(isFavorite: !contact.isFavorite));
   }
 
+  /// ลบหลายคนพร้อมกันในคำสั่งเดียว
+  ///
+  /// สร้างเครื่องหมายคำถามให้เท่าจำนวนรหัสที่ส่งมา แล้วผูกค่าทีละตัว
+  /// ไม่ได้ต่อรหัสเข้าไปในข้อความคำสั่งตรง ๆ เพื่อกันข้อมูลแปลกปลอม
+  Future<int> deleteMany(List<int> ids) async {
+    if (ids.isEmpty) return 0;
+
+    final db = await _helper.database;
+    final placeholders = List.filled(ids.length, '?').join(', ');
+    return db.delete(
+      DatabaseHelper.tableContacts,
+      where: 'id IN ($placeholders)',
+      whereArgs: ids,
+    );
+  }
+
+  /// เขียนหลายคนกลับคืนพร้อมกัน ใช้ตอนกดเลิกทำหลังลบหลายรายการ
+  Future<void> insertMany(List<Contact> contacts) async {
+    final db = await _helper.database;
+
+    final batch = db.batch();
+    for (final contact in contacts) {
+      batch.insert(DatabaseHelper.tableContacts, contact.toMap());
+    }
+    await batch.commit(noResult: true);
+  }
+
   /// ลบทุกรายชื่อในสมุด ใช้จากหน้าตั้งค่าเท่านั้นและต้องยืนยันก่อนเสมอ
   /// คืนจำนวนแถวที่ลบไป เพื่อเอาไปบอกผู้ใช้ว่าลบไปกี่คน
   Future<int> deleteAll() async {

@@ -65,6 +65,14 @@ class _ContactsScreenState extends State<ContactsScreen> {
   /// ข้อความผิดพลาดจากฐานข้อมูล ถ้าไม่ว่างจะแสดงแทนรายการ
   String? _error;
 
+  /// รหัสของคนที่ถูกติ๊กเลือกไว้ในโหมดเลือกหลายรายการ
+  ///
+  /// เก็บเป็นรหัส ไม่ใช่ตัว Contact เพราะรายการอาจถูกโหลดใหม่ระหว่างเลือกอยู่
+  /// เช่นตอนพิมพ์ค้นหา ถ้าเก็บทั้งดวงไว้จะกลายเป็นข้อมูลเก่าค้าง
+  final Set<int> _selectedIds = {};
+
+  bool _selectionMode = false;
+
   @override
   void initState() {
     super.initState();
@@ -138,12 +146,109 @@ class _ContactsScreenState extends State<ContactsScreen> {
       ..showSnackBar(SnackBar(content: Text(message), action: action));
   }
 
+  void _enterSelection(Contact contact) {
+    setState(() {
+      _selectionMode = true;
+      _selectedIds
+        ..clear()
+        ..add(contact.id!);
+    });
+  }
+
+  void _exitSelection() {
+    setState(() {
+      _selectionMode = false;
+      _selectedIds.clear();
+    });
+  }
+
+  void _toggleSelected(Contact contact) {
+    setState(() {
+      final id = contact.id!;
+      if (!_selectedIds.remove(id)) _selectedIds.add(id);
+      // เอาออกจนไม่เหลือใครแล้ว ให้ออกจากโหมดเลือกเลย
+      // จะได้ไม่ต้องกดปิดอีกทีทั้งที่ไม่มีอะไรให้ทำต่อ
+      if (_selectedIds.isEmpty) _selectionMode = false;
+    });
+  }
+
+  void _selectAll() {
+    setState(() {
+      _selectedIds
+        ..clear()
+        ..addAll(_contacts.map((contact) => contact.id!));
+    });
+  }
+
+  /// คนที่ถูกเลือกอยู่ เรียงตามลำดับที่เห็นบนหน้าจอ
+  List<Contact> get _selectedContacts =>
+      _contacts.where((contact) => _selectedIds.contains(contact.id)).toList();
+
+  Future<void> _copySelected() async {
+    final chosen = _selectedContacts;
+    if (chosen.isEmpty) return;
+
+    await _copy(chosen.map(_asText).join('\n\n'), 'รายชื่อ ${chosen.length} คน');
+    _exitSelection();
+  }
+
+  /// ลบหลายคนพร้อมกัน ถามยืนยันเสมอไม่ว่าจะตั้งค่าไว้อย่างไร
+  /// เพราะการลบทีละหลายคนพลาดแล้วเสียหายกว่าการลบทีละคนมาก
+  Future<void> _deleteSelected() async {
+    final chosen = _selectedContacts;
+    if (chosen.isEmpty) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.surfaceHigh,
+        title: Text('ลบ ${chosen.length} รายชื่อ'),
+        content: Text(
+          'จะลบ ${chosen.map((c) => c.name).take(3).join(', ')}'
+          '${chosen.length > 3 ? ' และอีก ${chosen.length - 3} คน' : ''} '
+          'ออกจากสมุด',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('ยกเลิก'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+            child: const Text('ลบ'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    await widget.repository.deleteMany(chosen.map((c) => c.id!).toList());
+    _exitSelection();
+    _notify(
+      'ลบ ${chosen.length} รายชื่อแล้ว',
+      action: SnackBarAction(
+        label: 'เลิกทำ',
+        onPressed: () async {
+          await widget.repository.insertMany(chosen);
+          widget.onDataChanged();
+          await _load();
+        },
+      ),
+    );
+    widget.onDataChanged();
+    await _load();
+  }
+
   Future<void> _openForm({Contact? contact}) async {
     final result = await Navigator.of(context).push<Contact>(
       AppMotion.slideRoute(
         ContactFormScreen(
           initial: contact,
           defaultTag: widget.settings.defaultTag,
+          // ปุ่มลบอยู่ในหน้ารายละเอียด ไม่ได้อยู่บนการ์ดในรายการแล้ว
+          onDelete: contact == null ? null : () => _confirmDelete(contact),
         ),
       ),
     );
@@ -292,6 +397,15 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 _copy(_asText(contact), 'ข้อมูลของ "${contact.name}"');
               },
             ),
+            ListTile(
+              leading: const Icon(Icons.checklist, color: AppColors.violet),
+              title: const Text('เลือกหลายรายการ'),
+              subtitle: const Text('เพื่อคัดลอกหรือลบพร้อมกันหลายคน'),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                _enterSelection(contact);
+              },
+            ),
             const SizedBox(height: AppSpacing.gap),
           ],
         ),
@@ -311,10 +425,19 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_selectionMode) return _buildSelectionScaffold();
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('สมุดรายชื่อ'),
         actions: [
+          IconButton(
+            tooltip: 'เลือกหลายรายการ',
+            onPressed: _contacts.isEmpty
+                ? null
+                : () => setState(() => _selectionMode = true),
+            icon: const Icon(Icons.checklist),
+          ),
           IconButton(
             tooltip: 'คัดลอกรายชื่อที่แสดงอยู่ทั้งหมด',
             onPressed: _copyAll,
@@ -427,6 +550,55 @@ class _ContactsScreenState extends State<ContactsScreen> {
     );
   }
 
+  /// หน้าจอตอนอยู่ในโหมดเลือกหลายรายการ
+  ///
+  /// ใช้แถบด้านบนคนละชุดไปเลย แทนที่จะเอาปุ่มไปยัดรวมกับแถบปกติ
+  /// ผู้ใช้จะได้เห็นชัดว่ากำลังอยู่คนละโหมด และไม่กดปุ่มผิดกัน
+  Widget _buildSelectionScaffold() {
+    final count = _selectedIds.length;
+    final all = count == _contacts.length && _contacts.isNotEmpty;
+
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          tooltip: 'ออกจากโหมดเลือก',
+          onPressed: _exitSelection,
+          icon: const Icon(Icons.close),
+        ),
+        title: Text(count == 0 ? 'แตะเพื่อเลือก' : 'เลือกแล้ว $count คน'),
+        actions: [
+          IconButton(
+            tooltip: all ? 'ยกเลิกการเลือกทั้งหมด' : 'เลือกทั้งหมด',
+            onPressed: all ? () => setState(_selectedIds.clear) : _selectAll,
+            icon: Icon(all ? Icons.deselect : Icons.select_all),
+          ),
+          IconButton(
+            tooltip: 'คัดลอกที่เลือก',
+            onPressed: count == 0 ? null : _copySelected,
+            icon: const Icon(Icons.copy_all_outlined),
+          ),
+          IconButton(
+            tooltip: 'ลบที่เลือก',
+            onPressed: count == 0 ? null : _deleteSelected,
+            icon: const Icon(Icons.delete_outline, color: AppColors.danger),
+          ),
+          const SizedBox(width: AppSpacing.xs),
+        ],
+      ),
+      body: SafeArea(
+        child: ContentWidth(
+          maxWidth: AppSpacing.maxWideContentWidth,
+          child: Column(
+            children: [
+              const SizedBox(height: AppSpacing.gap),
+              Expanded(child: _buildList()),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildList() {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
@@ -519,10 +691,17 @@ class _ContactsScreenState extends State<ContactsScreen> {
     return ContactCard(
       contact: contact,
       showNote: widget.settings.showNoteOnCard,
-      onTap: () => _openForm(contact: contact),
-      onLongPress: () => _showActions(contact),
+      selectionMode: _selectionMode,
+      selected: _selectedIds.contains(contact.id),
+      // อยู่ในโหมดเลือกแล้ว การแตะคือการติ๊ก ไม่ใช่การเปิดหน้ารายละเอียด
+      onTap: () => _selectionMode
+          ? _toggleSelected(contact)
+          : _openForm(contact: contact),
+      // กดค้างเข้าโหมดเลือกได้เลย เป็นท่าที่คนคุ้นจากแอปอื่นอยู่แล้ว
+      onLongPress: () => _selectionMode
+          ? _toggleSelected(contact)
+          : _showActions(contact),
       onToggleFavorite: () => _toggleFavorite(contact),
-      onDelete: () => _confirmDelete(contact),
     );
   }
 }

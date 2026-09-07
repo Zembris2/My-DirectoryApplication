@@ -8,8 +8,11 @@ import 'contact_avatar.dart';
 
 /// การ์ดแสดงผู้ติดต่อ 1 คนในหน้ารายการ
 ///
-/// แตะที่การ์ดเพื่อแก้ไข กดค้างเพื่อเปิดเมนูคัดลอก ปุ่มดาวและปุ่มลบ
-/// วางห่างกันตามระยะมาตรฐานเพื่อลดโอกาสกดผิดปุ่ม
+/// แตะที่การ์ดเพื่อดูและแก้ไข กดค้างเพื่อเปิดเมนูเพิ่มเติม
+///
+/// การ์ดในรายการไม่มีปุ่มลบ เพราะการลบเป็นสิ่งที่กู้คืนยากที่สุดในแอปนี้
+/// ปุ่มลบจึงอยู่ในหน้ารายละเอียดของแต่ละคน ซึ่งต้องตั้งใจเปิดเข้าไปก่อน
+/// เหลือไว้บนการ์ดเฉพาะปุ่มที่กดผิดแล้วกดกลับได้ทันที คือดาวกับแก้ไข
 class ContactCard extends StatelessWidget {
   const ContactCard({
     super.key,
@@ -17,15 +20,20 @@ class ContactCard extends StatelessWidget {
     required this.onTap,
     required this.onLongPress,
     required this.onToggleFavorite,
-    required this.onDelete,
     this.showNote = true,
+    this.selectionMode = false,
+    this.selected = false,
   });
 
   final Contact contact;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
   final VoidCallback onToggleFavorite;
-  final VoidCallback onDelete;
+
+  /// อยู่ในโหมดเลือกหลายรายการหรือไม่ ถ้าใช่ แตะการ์ดคือการติ๊กเลือก
+  /// ปุ่มต่าง ๆ จึงต้องหลบไปก่อน ไม่งั้นจะกดโดนโดยไม่ตั้งใจ
+  final bool selectionMode;
+  final bool selected;
 
   /// ปิดได้จากหน้าตั้งค่า สำหรับคนที่อยากให้การ์ดสั้นที่สุด
   final bool showNote;
@@ -37,6 +45,8 @@ class ContactCard extends StatelessWidget {
 
     return Card(
       clipBehavior: Clip.antiAlias,
+      // การ์ดที่ถูกเลือกเปลี่ยนสีพื้นทั้งใบ เห็นได้ชัดกว่าดูแค่เครื่องหมายถูกเล็ก ๆ
+      color: selected ? AppColors.surfaceHigh : null,
       child: InkWell(
         onTap: onTap,
         onLongPress: onLongPress,
@@ -44,7 +54,10 @@ class ContactCard extends StatelessWidget {
           // ขีดสีด้านซ้ายบอกกลุ่มของคนนี้ อ่านได้เร็วกว่าการหาป้ายข้อความ
           decoration: BoxDecoration(
             border: Border(
-              left: BorderSide(color: contact.tag.color, width: 4),
+              left: BorderSide(
+                color: selected ? AppColors.primary : contact.tag.color,
+                width: selected ? 6 : 4,
+              ),
             ),
           ),
           padding: const EdgeInsets.all(AppSpacing.sm),
@@ -92,35 +105,44 @@ class ContactCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: AppSpacing.gap),
-                  IconButton(
-                    onPressed: onToggleFavorite,
-                    tooltip: contact.isFavorite
-                        ? 'เอาออกจากรายการโปรด'
-                        : 'เพิ่มเข้ารายการโปรด',
-                    // สลับไอคอนแบบขยายเข้า บอกว่ากดติดแล้วโดยไม่ต้องมีข้อความ
-                    icon: AnimatedSwitcher(
-                      duration: AppMotion.fast,
-                      transitionBuilder: (child, animation) => ScaleTransition(
-                        scale: animation,
-                        child: child,
-                      ),
-                      child: Icon(
-                        contact.isFavorite ? Icons.star : Icons.star_border,
-                        key: ValueKey(contact.isFavorite),
-                        color: contact.isFavorite
-                            ? AppColors.accent
-                            : AppColors.textSecondary,
+                  if (selectionMode)
+                    Icon(
+                      selected
+                          ? Icons.check_circle
+                          : Icons.radio_button_unchecked,
+                      color: selected
+                          ? AppColors.primary
+                          : AppColors.textSecondary,
+                    )
+                  else ...[
+                    IconButton(
+                      onPressed: onToggleFavorite,
+                      tooltip: contact.isFavorite
+                          ? 'เอาออกจากรายการโปรด'
+                          : 'เพิ่มเข้ารายการโปรด',
+                      // สลับไอคอนแบบขยายเข้า บอกว่ากดติดแล้วโดยไม่ต้องมีข้อความ
+                      icon: AnimatedSwitcher(
+                        duration: AppMotion.fast,
+                        transitionBuilder: (child, animation) =>
+                            ScaleTransition(scale: animation, child: child),
+                        child: Icon(
+                          contact.isFavorite ? Icons.star : Icons.star_border,
+                          key: ValueKey(contact.isFavorite),
+                          color: contact.isFavorite
+                              ? AppColors.accent
+                              : AppColors.textSecondary,
+                        ),
                       ),
                     ),
-                  ),
-                  IconButton(
-                    onPressed: onDelete,
-                    tooltip: 'ลบรายชื่อ',
-                    icon: const Icon(
-                      Icons.delete_outline,
-                      color: AppColors.danger,
+                    IconButton(
+                      onPressed: onTap,
+                      tooltip: 'ดูและแก้ไข',
+                      icon: const Icon(
+                        Icons.edit_outlined,
+                        color: AppColors.textSecondary,
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
               // แถวล่างขึ้นเฉพาะคนที่มีข้อมูลเสริมจริง ๆ

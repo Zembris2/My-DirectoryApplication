@@ -23,12 +23,19 @@ class ContactFormScreen extends StatefulWidget {
     super.key,
     this.initial,
     this.defaultTag = ContactTag.general,
+    this.onDelete,
   });
 
   final Contact? initial;
 
   /// กลุ่มที่เลือกไว้ล่วงหน้าเมื่อเพิ่มคนใหม่ มาจากหน้าตั้งค่า
   final ContactTag defaultTag;
+
+  /// ลบคนนี้ทิ้ง เป็น null ตอนเพิ่มคนใหม่เพราะยังไม่มีอะไรให้ลบ
+  ///
+  /// หน้ารายการเป็นคนถามยืนยันและจัดการเรื่องปุ่มเลิกทำ
+  /// หน้านี้แค่ปิดตัวเองแล้วส่งเรื่องต่อ
+  final VoidCallback? onDelete;
 
   bool get isEditing => initial != null;
 
@@ -210,9 +217,23 @@ class _ContactFormScreenState extends State<ContactFormScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final onDelete = widget.onDelete;
+
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.isEditing ? 'แก้ไขรายชื่อ' : 'เพิ่มรายชื่อ'),
+        actions: [
+          if (onDelete != null)
+            IconButton(
+              tooltip: 'ลบรายชื่อนี้',
+              onPressed: () {
+                Navigator.of(context).pop();
+                onDelete();
+              },
+              icon: const Icon(Icons.delete_outline, color: AppColors.danger),
+            ),
+          const SizedBox(width: AppSpacing.xs),
+        ],
       ),
       body: SafeArea(
         child: ContentWidth(
