@@ -27,6 +27,7 @@ class ContactsScreen extends StatefulWidget {
     super.key,
     required this.repository,
     required this.onDataChanged,
+    required this.dataVersion,
     required this.settings,
     required this.onOpenManual,
     required this.onOpenSettings,
@@ -44,6 +45,10 @@ class ContactsScreen extends StatefulWidget {
 
   /// แจ้งหน้าแม่เมื่อข้อมูลเปลี่ยน เพื่อให้แดชบอร์ดโหลดตัวเลขใหม่
   final VoidCallback onDataChanged;
+
+  /// เพิ่มค่าทุกครั้งที่ข้อมูลเปลี่ยน รวมถึงตอนที่หน้าอื่นเป็นคนเปลี่ยน
+  /// เช่น กดล้างข้อมูลทั้งหมดจากหน้าตั้งค่า หน้านี้จะได้โหลดรายการใหม่ตาม
+  final int dataVersion;
 
   @override
   State<ContactsScreen> createState() => _ContactsScreenState();
@@ -75,6 +80,12 @@ class _ContactsScreenState extends State<ContactsScreen> {
     // แต่ไม่ทับค่าที่ผู้ใช้เพิ่งกดสลับเองในหน้านี้
     if (oldWidget.settings.defaultSort != widget.settings.defaultSort) {
       _sort = widget.settings.defaultSort;
+      _load();
+      return;
+    }
+
+    // ข้อมูลถูกเปลี่ยนจากหน้าอื่น ต้องอ่านใหม่ ไม่งั้นจะยังโชว์รายการเก่าค้างอยู่
+    if (oldWidget.dataVersion != widget.dataVersion) {
       _load();
     }
   }

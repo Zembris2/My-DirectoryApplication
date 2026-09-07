@@ -184,6 +184,7 @@ class _HomeShellState extends State<HomeShell>
       ContactsScreen(
         repository: _repository,
         onDataChanged: _handleDataChanged,
+        dataVersion: _dataVersion,
         settings: _settings,
         onOpenManual: _openManual,
         onOpenSettings: _openSettings,

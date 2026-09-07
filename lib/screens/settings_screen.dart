@@ -11,7 +11,7 @@ import '../widgets/content_width.dart';
 ///
 /// ทุกตัวเลือกมีผลทันทีที่กด ไม่มีปุ่มบันทึกให้ต้องจำ
 /// ค่าถูกเขียนลงตาราง settings ในฐานข้อมูลเดียวกับรายชื่อ เปิดแอปใหม่จึงยังอยู่
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
     super.key,
     required this.settings,
@@ -30,14 +30,23 @@ class SettingsScreen extends StatelessWidget {
 
   final VoidCallback onDataCleared;
 
-  Future<void> _confirmClear(BuildContext context) async {
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  /// จำนวนรายชื่อที่หน้านี้เห็น เก็บไว้เองเพราะหน้าแม่ไม่ได้สั่งวาดหน้านี้ใหม่
+  /// ตอนตัวเลขเปลี่ยน ถ้าอ่านจาก widget ตรง ๆ ปุ่มล้างข้อมูลจะค้างสถานะเดิม
+  late int _total = widget.total;
+
+  Future<void> _confirmClear() async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         backgroundColor: AppColors.surfaceHigh,
         title: const Text('ล้างข้อมูลทั้งหมด'),
         content: Text(
-          'จะลบรายชื่อทั้ง $total คนออกจากสมุดถาวร '
+          'จะลบรายชื่อทั้ง $_total คนออกจากสมุดถาวร '
           'การลบครั้งนี้กดเลิกทำไม่ได้ ต้องการทำต่อหรือไม่',
         ),
         actions: [
@@ -54,11 +63,14 @@ class SettingsScreen extends StatelessWidget {
       ),
     );
 
-    if (confirmed != true || !context.mounted) return;
+    if (confirmed != true) return;
 
-    final removed = await repository.deleteAll();
-    onDataCleared();
-    if (!context.mounted) return;
+    final removed = await widget.repository.deleteAll();
+    widget.onDataCleared();
+    if (!mounted) return;
+
+    // อัปเดตตัวเลขในหน้านี้เอง ปุ่มจะได้กลายเป็นสีเทาทันทีเมื่อไม่เหลือใครแล้ว
+    setState(() => _total = 0);
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text('ล้างข้อมูลแล้ว $removed รายชื่อ')));
@@ -80,12 +92,13 @@ class SettingsScreen extends StatelessWidget {
                 children: [
                   _ChoiceRow<ContactTag>(
                     label: 'กลุ่มที่เลือกไว้ให้',
-                    value: settings.defaultTag,
+                    value: widget.settings.defaultTag,
                     choices: {
                       for (final tag in ContactTag.values) tag: tag.label,
                     },
                     onChanged: (tag) =>
-                        onChanged(settings.copyWith(defaultTag: tag)),
+                        widget.onChanged(
+                            widget.settings.copyWith(defaultTag: tag)),
                   ),
                 ],
               ),
@@ -97,27 +110,30 @@ class SettingsScreen extends StatelessWidget {
                 children: [
                   _ChoiceRow<ContactSort>(
                     label: 'เรียงลำดับเริ่มต้น',
-                    value: settings.defaultSort,
+                    value: widget.settings.defaultSort,
                     choices: const {
                       ContactSort.newest: 'เพิ่มล่าสุด',
                       ContactSort.name: 'ตามชื่อ',
                     },
                     onChanged: (sort) =>
-                        onChanged(settings.copyWith(defaultSort: sort)),
+                        widget.onChanged(
+                            widget.settings.copyWith(defaultSort: sort)),
                   ),
                   _SwitchRow(
                     label: 'แสดงบันทึกย่อบนการ์ด',
                     detail: 'ปิดแล้วการ์ดจะสั้นลง เห็นรายชื่อต่อหน้าจอมากขึ้น',
-                    value: settings.showNoteOnCard,
+                    value: widget.settings.showNoteOnCard,
                     onChanged: (value) =>
-                        onChanged(settings.copyWith(showNoteOnCard: value)),
+                        widget.onChanged(
+                            widget.settings.copyWith(showNoteOnCard: value)),
                   ),
                   _SwitchRow(
                     label: 'ถามยืนยันก่อนลบ',
                     detail: 'ปิดได้ เพราะยังมีปุ่มเลิกทำรับไว้อีกชั้นหนึ่ง',
-                    value: settings.confirmBeforeDelete,
+                    value: widget.settings.confirmBeforeDelete,
                     onChanged: (value) =>
-                        onChanged(settings.copyWith(confirmBeforeDelete: value)),
+                        widget.onChanged(widget.settings
+                            .copyWith(confirmBeforeDelete: value)),
                   ),
                 ],
               ),
@@ -129,13 +145,14 @@ class SettingsScreen extends StatelessWidget {
                 children: [
                   _ChoiceRow<int>(
                     label: 'มองล่วงหน้ากี่วัน',
-                    value: settings.birthdayWindowDays,
+                    value: widget.settings.birthdayWindowDays,
                     choices: {
                       for (final days in AppSettings.birthdayWindowChoices)
                         days: '$days วัน',
                     },
                     onChanged: (days) =>
-                        onChanged(settings.copyWith(birthdayWindowDays: days)),
+                        widget.onChanged(widget.settings
+                            .copyWith(birthdayWindowDays: days)),
                   ),
                 ],
               ),
@@ -145,7 +162,7 @@ class SettingsScreen extends StatelessWidget {
                 color: AppColors.teal,
                 title: 'ข้อมูลระบบ',
                 children: [
-                  _InfoRow(label: 'รายชื่อในสมุด', value: '$total คน'),
+                  _InfoRow(label: 'รายชื่อในสมุด', value: '$_total คน'),
                   const _InfoRow(label: 'เวอร์ชันฐานข้อมูล', value: '5'),
                   _InfoRow(label: 'โหมดฐานข้อมูล', value: webDatabaseMode),
                 ],
@@ -165,7 +182,7 @@ class SettingsScreen extends StatelessWidget {
                     ),
                   ),
                   OutlinedButton.icon(
-                    onPressed: total == 0 ? null : () => _confirmClear(context),
+                    onPressed: _total == 0 ? null : _confirmClear,
                     icon: const Icon(Icons.delete_forever_outlined),
                     label: const Text('ล้างรายชื่อทั้งหมด'),
                     style: OutlinedButton.styleFrom(
