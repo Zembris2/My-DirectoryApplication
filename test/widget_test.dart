@@ -17,6 +17,9 @@ void main() {
   });
 
   group('Validators.phone', () {
+    test('เบอร์ว่างต้องผ่าน เพราะไม่บังคับกรอก', () {
+      expect(Validators.phone(''), isNull);
+    });
     test('เบอร์สั้นกว่า 9 หลักต้องไม่ผ่าน', () {
       expect(Validators.phone('081234'), isNotNull);
     });
@@ -29,6 +32,9 @@ void main() {
   });
 
   group('Validators.email', () {
+    test('อีเมลว่างต้องผ่าน เพราะไม่บังคับกรอก', () {
+      expect(Validators.email(''), isNull);
+    });
     test('อีเมลไม่มี @ ต้องไม่ผ่าน', () {
       expect(Validators.email('somchai.mail.com'), isNotNull);
     });
@@ -37,6 +43,15 @@ void main() {
     });
     test('อีเมลถูกรูปแบบต้องผ่าน', () {
       expect(Validators.email('somchai@mail.com'), isNull);
+    });
+  });
+
+  group('Validators.anyContact', () {
+    test('ไม่กรอกช่องทางใดเลยต้องไม่ผ่าน', () {
+      expect(Validators.anyContact(['', '  ', '']), isNotNull);
+    });
+    test('กรอกช่องทางใดช่องทางหนึ่งต้องผ่าน', () {
+      expect(Validators.anyContact(['', 'somchai.jd', '']), isNull);
     });
   });
 }

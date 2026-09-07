@@ -41,6 +41,8 @@ class AvatarPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasImage = preview.hasImage;
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.md),
@@ -62,11 +64,9 @@ class AvatarPicker extends StatelessWidget {
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                       Text(
-                        preview.hasImage
+                        hasImage
                             ? 'ใช้รูปจากเครื่อง'
-                            : preview.avatarEmoji.isEmpty
-                                ? 'ยังไม่ได้เลือกรูป ใช้ตัวอักษรแรกของชื่อแทน'
-                                : 'ใช้อีโมจิที่เลือกไว้',
+                            : 'ไม่ใส่รูปก็ได้ จะใช้ตัวอักษรแรกของชื่อแทน',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],
@@ -81,9 +81,7 @@ class AvatarPicker extends StatelessWidget {
                   child: OutlinedButton.icon(
                     onPressed: onPickImage,
                     icon: const Icon(Icons.image_outlined, size: 18),
-                    label: Text(
-                      preview.hasImage ? 'เปลี่ยนรูป' : 'เลือกรูปจากเครื่อง',
-                    ),
+                    label: Text(hasImage ? 'เปลี่ยนรูป' : 'เลือกรูปจากเครื่อง'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppColors.primary,
                       side: const BorderSide(color: AppColors.divider),
@@ -91,80 +89,83 @@ class AvatarPicker extends StatelessWidget {
                     ),
                   ),
                 ),
-                if (preview.hasImage) ...[
+                if (hasImage) ...[
                   const SizedBox(width: AppSpacing.gap),
                   IconButton(
                     tooltip: 'เอารูปออก',
                     onPressed: onRemoveImage,
-                    icon: const Icon(Icons.delete_outline,
-                        color: AppColors.danger),
+                    icon: const Icon(
+                      Icons.delete_outline,
+                      color: AppColors.danger,
+                    ),
                   ),
                 ],
               ],
             ),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              // บอกไว้ตรง ๆ ว่าอีกสองอย่างข้างล่างจะไม่มีผลถ้าใส่รูปจริงไว้
-              preview.hasImage
-                  ? 'อีโมจิและสีด้านล่างจะกลับมาใช้เมื่อเอารูปออก'
-                  : 'หรือเลือกอีโมจิแทนก็ได้',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            const SizedBox(height: AppSpacing.gap),
-            SizedBox(
-              height: 44,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                children: emojiChoices.map((emoji) {
-                  final active = emoji == preview.avatarEmoji;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: AppSpacing.gap),
-                    child: _Swatch(
-                      active: active,
-                      onTap: () => onEmojiChanged(emoji),
-                      child: emoji.isEmpty
-                          ? const Icon(
-                              Icons.text_fields,
-                              size: 18,
-                              color: AppColors.textSecondary,
-                            )
-                          : Text(emoji, style: const TextStyle(fontSize: 20)),
-                    ),
-                  );
-                }).toList(),
+            // ใส่รูปจริงแล้วซ่อนอีโมจิกับสีไปเลย เพราะสองอย่างนี้ไม่มีผลอะไรแล้ว
+            // ถ้าอยากกลับไปใช้ ก็แค่กดเอารูปออก ตัวเลือกจะกลับมาเอง
+            if (!hasImage) ...[
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                'หรือเลือกอีโมจิแทนก็ได้',
+                style: Theme.of(context).textTheme.bodySmall,
               ),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Text('สีพื้นหลัง', style: Theme.of(context).textTheme.bodySmall),
-            const SizedBox(height: AppSpacing.gap),
-            Wrap(
-              spacing: AppSpacing.gap,
-              runSpacing: AppSpacing.gap,
-              children: [
-                _Swatch(
-                  active: preview.avatarColor < 0,
-                  onTap: () => onColorChanged(-1),
-                  child: const Icon(
-                    Icons.auto_awesome,
-                    size: 16,
-                    color: AppColors.textSecondary,
-                  ),
+              const SizedBox(height: AppSpacing.gap),
+              SizedBox(
+                height: 44,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: emojiChoices.map((emoji) {
+                    final active = emoji == preview.avatarEmoji;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: AppSpacing.gap),
+                      child: _Swatch(
+                        active: active,
+                        onTap: () => onEmojiChanged(emoji),
+                        child: emoji.isEmpty
+                            ? const Icon(
+                                Icons.text_fields,
+                                size: 18,
+                                color: AppColors.textSecondary,
+                              )
+                            : Text(emoji, style: const TextStyle(fontSize: 20)),
+                      ),
+                    );
+                  }).toList(),
                 ),
-                for (var i = 0; i < AppColors.avatarPalette.length; i++)
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Text('สีพื้นหลัง', style: Theme.of(context).textTheme.bodySmall),
+              const SizedBox(height: AppSpacing.gap),
+              Wrap(
+                spacing: AppSpacing.gap,
+                runSpacing: AppSpacing.gap,
+                children: [
                   _Swatch(
-                    active: preview.avatarColor == i,
-                    onTap: () => onColorChanged(i),
-                    child: Container(
-                      width: 18,
-                      height: 18,
-                      decoration: BoxDecoration(
-                        color: AppColors.avatarPalette[i],
-                        shape: BoxShape.circle,
+                    active: preview.avatarColor < 0,
+                    onTap: () => onColorChanged(-1),
+                    child: const Icon(
+                      Icons.auto_awesome,
+                      size: 16,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  for (var i = 0; i < AppColors.avatarPalette.length; i++)
+                    _Swatch(
+                      active: preview.avatarColor == i,
+                      onTap: () => onColorChanged(i),
+                      child: Container(
+                        width: 18,
+                        height: 18,
+                        decoration: BoxDecoration(
+                          color: AppColors.avatarPalette[i],
+                          shape: BoxShape.circle,
+                        ),
                       ),
                     ),
-                  ),
-              ],
-            ),
+                ],
+              ),
+            ],
           ],
         ),
       ),

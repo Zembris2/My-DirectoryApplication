@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../data/contact_repository.dart';
-import '../data/db_factory.dart';
 import '../models/app_settings.dart';
 import '../models/contact_tag.dart';
 import '../theme/app_theme.dart';
@@ -19,6 +18,7 @@ class SettingsScreen extends StatefulWidget {
     required this.repository,
     required this.total,
     required this.onDataCleared,
+    required this.onManageTags,
   });
 
   final AppSettings settings;
@@ -29,6 +29,9 @@ class SettingsScreen extends StatefulWidget {
   final int total;
 
   final VoidCallback onDataCleared;
+
+  /// เปิดหน้าจัดการกลุ่ม หน้าแม่เป็นคนพาไป
+  final VoidCallback onManageTags;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -73,7 +76,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() => _total = 0);
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text('ล้างข้อมูลแล้ว $removed รายชื่อ')));
+      ..showSnackBar(
+          SnackBar(content: Text('ล้างข้อมูลแล้ว $removed รายชื่อ')));
   }
 
   @override
@@ -94,11 +98,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     label: 'กลุ่มที่เลือกไว้ให้',
                     value: widget.settings.defaultTag,
                     choices: {
-                      for (final tag in ContactTag.values) tag: tag.label,
+                      for (final tag in ContactTag.all) tag: tag.label,
                     },
-                    onChanged: (tag) =>
-                        widget.onChanged(
-                            widget.settings.copyWith(defaultTag: tag)),
+                    onChanged: (tag) => widget
+                        .onChanged(widget.settings.copyWith(defaultTag: tag)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              _Group(
+                icon: Icons.label_outline,
+                color: AppColors.accent,
+                title: 'กลุ่มผู้ติดต่อ',
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: AppSpacing.gap),
+                    child: Text(
+                      'สร้างกลุ่มของตัวเองได้ ตั้งชื่อ เลือกสีและไอคอนเอง '
+                      'กลุ่มพื้นฐาน 5 กลุ่มเปลี่ยนสีได้แต่ลบไม่ได้',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: widget.onManageTags,
+                    icon: const Icon(Icons.tune, size: 18),
+                    label: Text('จัดการกลุ่ม (${ContactTag.all.length} กลุ่ม)'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.accent,
+                      side: const BorderSide(color: AppColors.divider),
+                      minimumSize: const Size.fromHeight(48),
+                    ),
                   ),
                 ],
               ),
@@ -115,25 +144,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ContactSort.newest: 'เพิ่มล่าสุด',
                       ContactSort.name: 'ตามชื่อ',
                     },
-                    onChanged: (sort) =>
-                        widget.onChanged(
-                            widget.settings.copyWith(defaultSort: sort)),
+                    onChanged: (sort) => widget
+                        .onChanged(widget.settings.copyWith(defaultSort: sort)),
                   ),
                   _SwitchRow(
                     label: 'แสดงบันทึกย่อบนการ์ด',
                     detail: 'ปิดแล้วการ์ดจะสั้นลง เห็นรายชื่อต่อหน้าจอมากขึ้น',
                     value: widget.settings.showNoteOnCard,
-                    onChanged: (value) =>
-                        widget.onChanged(
-                            widget.settings.copyWith(showNoteOnCard: value)),
+                    onChanged: (value) => widget.onChanged(
+                        widget.settings.copyWith(showNoteOnCard: value)),
                   ),
                   _SwitchRow(
                     label: 'ถามยืนยันก่อนลบ',
                     detail: 'ปิดได้ เพราะยังมีปุ่มเลิกทำรับไว้อีกชั้นหนึ่ง',
                     value: widget.settings.confirmBeforeDelete,
-                    onChanged: (value) =>
-                        widget.onChanged(widget.settings
-                            .copyWith(confirmBeforeDelete: value)),
+                    onChanged: (value) => widget.onChanged(
+                        widget.settings.copyWith(confirmBeforeDelete: value)),
                   ),
                 ],
               ),
@@ -150,21 +176,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       for (final days in AppSettings.birthdayWindowChoices)
                         days: '$days วัน',
                     },
-                    onChanged: (days) =>
-                        widget.onChanged(widget.settings
-                            .copyWith(birthdayWindowDays: days)),
+                    onChanged: (days) => widget.onChanged(
+                        widget.settings.copyWith(birthdayWindowDays: days)),
                   ),
                 ],
               ),
               const SizedBox(height: AppSpacing.sm),
               _Group(
-                icon: Icons.storage_outlined,
+                icon: Icons.lock_outline,
                 color: AppColors.teal,
-                title: 'ข้อมูลระบบ',
+                title: 'ข้อมูลของคุณ',
                 children: [
                   _InfoRow(label: 'รายชื่อในสมุด', value: '$_total คน'),
-                  const _InfoRow(label: 'เวอร์ชันฐานข้อมูล', value: '5'),
-                  _InfoRow(label: 'โหมดฐานข้อมูล', value: webDatabaseMode),
+                  _InfoRow(
+                    label: 'กลุ่มทั้งหมด',
+                    value: '${ContactTag.all.length} กลุ่ม',
+                  ),
+                  const _InfoRow(
+                    label: 'ที่เก็บข้อมูล',
+                    value: 'ในเครื่องนี้เท่านั้น',
+                  ),
                 ],
               ),
               const SizedBox(height: AppSpacing.sm),

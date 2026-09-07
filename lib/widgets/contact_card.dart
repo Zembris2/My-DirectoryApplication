@@ -73,16 +73,21 @@ class ContactCard extends StatelessWidget {
                             _TagChip(contact: contact),
                           ],
                         ),
-                        const SizedBox(height: AppSpacing.xs),
-                        _InfoLine(
-                          icon: Icons.phone_outlined,
-                          text: contact.phone,
-                        ),
-                        const SizedBox(height: 2),
-                        _InfoLine(
-                          icon: Icons.mail_outline,
-                          text: contact.email,
-                        ),
+                        // ช่องที่ไม่ได้กรอกไม่ต้องเว้นที่ไว้ การ์ดจะได้ไม่มีบรรทัดว่าง
+                        if (contact.phone.isNotEmpty) ...[
+                          const SizedBox(height: AppSpacing.xs),
+                          _InfoLine(
+                            icon: Icons.phone_outlined,
+                            text: contact.phone,
+                          ),
+                        ],
+                        if (contact.email.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          _InfoLine(
+                            icon: Icons.mail_outline,
+                            text: contact.email,
+                          ),
+                        ],
                       ],
                     ),
                   ),

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../data/contact_repository.dart';
-import '../data/db_factory.dart';
 import '../data/settings_repository.dart';
+import '../data/tag_repository.dart';
 import '../models/app_settings.dart';
 import '../utils/app_transitions.dart';
 import '../theme/app_theme.dart';
@@ -11,6 +11,7 @@ import 'contacts_screen.dart';
 import 'dashboard_screen.dart';
 import 'manual_screen.dart';
 import 'settings_screen.dart';
+import 'tags_screen.dart';
 
 /// โครงหลักของแอป ทำหน้าที่สลับหน้าจอ 2 แท็บ
 ///
@@ -40,6 +41,7 @@ class _HomeShellState extends State<HomeShell>
 
   final ContactRepository _repository = ContactRepository();
   final SettingsRepository _settingsRepository = SettingsRepository();
+  final TagRepository _tagRepository = TagRepository();
 
   /// ค่าตั้งค่าที่ใช้อยู่ เริ่มจากค่าเริ่มต้นก่อน แล้วค่อยทับด้วยค่าที่เคยบันทึกไว้
   /// หน้าจอจึงวาดได้ทันทีโดยไม่ต้องรอฐานข้อมูล
@@ -64,7 +66,19 @@ class _HomeShellState extends State<HomeShell>
   void initState() {
     super.initState();
     _loadSettings();
+    _loadTags();
     _loadCounts();
+  }
+
+  /// โหลดกลุ่มที่ผู้ใช้ตั้งไว้ ต้องทำตั้งแต่เปิดแอปเพราะการ์ดทุกใบใช้หาสีของกลุ่ม
+  Future<void> _loadTags() async {
+    try {
+      await _tagRepository.load();
+      if (!mounted) return;
+      setState(() {});
+    } catch (_) {
+      // ใช้กลุ่มเริ่มต้นไปก่อน หน้ารายชื่อจะรายงานปัญหาฐานข้อมูลเอง
+    }
   }
 
   Future<void> _loadSettings() async {
@@ -81,6 +95,14 @@ class _HomeShellState extends State<HomeShell>
   Future<void> _updateSettings(AppSettings settings) async {
     setState(() => _settings = settings);
     await _settingsRepository.save(settings);
+  }
+
+  void _openTags() {
+    Navigator.of(context).push(
+      AppMotion.slideRoute<void>(
+        TagsScreen(onChanged: () => setState(() {})),
+      ),
+    );
   }
 
   void _openManual() {
@@ -105,6 +127,7 @@ class _HomeShellState extends State<HomeShell>
               _handleDataChanged();
               setInner(() {});
             },
+            onManageTags: _openTags,
           ),
         ),
       ),
@@ -201,7 +224,8 @@ class _HomeShellState extends State<HomeShell>
 
     // จางเข้าพร้อมเลื่อนขึ้นนิดเดียว บอกว่าเนื้อหาเปลี่ยนชุดแล้ว
     // แต่ไม่แรงจนรู้สึกว่าต้องรอ
-    final eased = CurvedAnimation(parent: _pageController, curve: AppMotion.curve);
+    final eased =
+        CurvedAnimation(parent: _pageController, curve: AppMotion.curve);
     final stack = IndexedStack(index: _index, children: pages);
 
     final body = AppMotion.disabled(context)
@@ -250,7 +274,7 @@ class _HomeShellState extends State<HomeShell>
                 onSelected: _selectTab,
                 extended:
                     constraints.maxWidth >= AppSpacing.extendedRailBreakpoint,
-                footer: 'เก็บใน SQLite · $webDatabaseMode',
+                footer: 'ข้อมูลเก็บในเครื่องนี้เท่านั้น',
                 items: [
                   for (var i = 0; i < _destinations.length; i++)
                     SidebarItem(

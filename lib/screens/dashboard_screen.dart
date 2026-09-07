@@ -114,7 +114,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (error != null) {
       return EmptyState(
         icon: Icons.error_outline,
-        title: 'เปิดฐานข้อมูลไม่สำเร็จ',
+        title: 'เปิดข้อมูลไม่สำเร็จ',
         message: error,
         color: AppColors.danger,
       );

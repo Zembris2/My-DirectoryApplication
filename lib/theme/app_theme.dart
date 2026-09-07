@@ -32,6 +32,23 @@ class AppColors {
   static const Color textSecondary = Color(0xFFA3B0C7);
   static const Color divider = Color(0xFF2E3A52);
 
+  /// จานสีสำหรับกลุ่มผู้ติดต่อ ผู้ใช้เลือกเองได้ตอนสร้างกลุ่มใหม่
+  ///
+  /// เก็บลงฐานข้อมูลเป็นลำดับในจานสี ไม่ใช่รหัสสีดิบ ๆ
+  /// เพราะถ้าวันหลังปรับโทนสีทั้งแอป กลุ่มที่ผู้ใช้สร้างไว้จะเปลี่ยนตามไปด้วย
+  static const List<Color> tagPalette = [
+    textSecondary,
+    danger,
+    success,
+    primary,
+    accent,
+    violet,
+    cyan,
+    pink,
+    orange,
+    teal,
+  ];
+
   /// สีวงกลม avatar เลือกจากชื่อ ทำให้คนคนเดิมได้สีเดิมทุกครั้งที่เปิดแอป
   /// ช่วยให้กวาดสายตาหาคนในรายการยาว ๆ ได้เร็วกว่าดูตัวอักษรอย่างเดียว
   static const List<Color> avatarPalette = [

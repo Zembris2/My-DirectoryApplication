@@ -1,5 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 
+import '../models/contact_tag.dart';
 import 'db_factory.dart';
 
 /// จัดการการเปิดฐานข้อมูลและการอัปเกรดโครงสร้างตาราง
@@ -19,12 +20,16 @@ class DatabaseHelper {
   /// จะได้อยู่ในไฟล์เดียวกัน สำรองหรือย้ายเครื่องทีเดียวจบ
   static const String tableSettings = 'settings';
 
+  /// ตารางเก็บกลุ่มผู้ติดต่อ ทั้งกลุ่มที่ให้มาแต่แรกและกลุ่มที่ผู้ใช้สร้างเอง
+  static const String tableTags = 'tags';
+
   /// เวอร์ชัน 1 มี 4 คอลัมน์ (id, name, phone, email)
   /// เวอร์ชัน 2 เพิ่ม is_favorite, created_at, updated_at รวมเป็น 7 คอลัมน์
   /// เวอร์ชัน 3 เพิ่ม tag, birthday, note รวมเป็น 10 คอลัมน์
   /// เวอร์ชัน 4 เพิ่มช่องทางติดต่อออนไลน์ กับรูปโปรไฟล์ และเพิ่มตาราง settings
   /// เวอร์ชัน 5 เพิ่ม avatar_image สำหรับรูปโปรไฟล์จริงที่ผู้ใช้เลือกจากเครื่อง
-  static const int _dbVersion = 5;
+  /// เวอร์ชัน 6 เพิ่มตาราง tags ให้ผู้ใช้สร้างกลุ่มของตัวเองได้
+  static const int _dbVersion = 6;
 
   Database? _db;
 
@@ -64,6 +69,34 @@ class DatabaseHelper {
       )
     ''');
     await _createSettings(db);
+    await _createTags(db);
+  }
+
+  /// สร้างตารางกลุ่มพร้อมใส่กลุ่มเริ่มต้นให้
+  ///
+  /// ใช้ชื่อกลุ่มเป็นคีย์หลัก เพราะตัวผู้ติดต่อเก็บกลุ่มเป็นชื่อ ไม่ใช่เลขอ้างอิง
+  /// ทำให้อ่านข้อมูลดิบในตารางแล้วเข้าใจได้ทันทีว่าใครอยู่กลุ่มไหน
+  Future<void> _createTags(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $tableTags (
+        label TEXT PRIMARY KEY,
+        color_index INTEGER NOT NULL,
+        icon_index INTEGER NOT NULL,
+        sort_order INTEGER NOT NULL,
+        is_builtin INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+
+    final batch = db.batch();
+    for (var i = 0; i < ContactTag.defaults.length; i++) {
+      batch.insert(
+        tableTags,
+        ContactTag.defaults[i].toMap(i),
+        // ถ้ามีอยู่แล้วให้ข้ามไป จะได้ไม่ทับสีที่ผู้ใช้ปรับไว้เอง
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+    }
+    await batch.commit(noResult: true);
   }
 
   Future<void> _createSettings(Database db) async {
@@ -136,6 +169,12 @@ class DatabaseHelper {
       await db.execute(
         'ALTER TABLE $tableContacts ADD COLUMN avatar_image BLOB',
       );
+    }
+
+    if (oldVersion < 6) {
+      // กลุ่มเดิมถูกเก็บเป็นข้อความในแถวผู้ติดต่ออยู่แล้ว การย้ายมาเป็นตาราง
+      // จึงแค่สร้างตารางใหม่แล้วใส่กลุ่มเริ่มต้นลงไป ไม่ต้องแตะข้อมูลผู้ติดต่อเลย
+      await _createTags(db);
     }
   }
 

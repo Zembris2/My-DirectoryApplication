@@ -32,7 +32,7 @@ class TagFilterBar extends StatelessWidget {
             active: selected == null,
             onTap: () => onChanged(null),
           ),
-          ...ContactTag.values.map(
+          ...ContactTag.all.map(
             (tag) => _TagButton(
               label: tag.label,
               icon: tag.icon,

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../data/contact_repository.dart';
-import '../data/db_factory.dart';
 import '../models/app_settings.dart';
 import '../models/contact.dart';
 import '../models/contact_tag.dart';
@@ -98,6 +97,12 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
   /// อ่านข้อมูลใหม่จากฐานข้อมูลตามเงื่อนไขที่เลือกอยู่
   Future<void> _load() async {
+    // ถ้ากลุ่มที่ใช้กรองอยู่ถูกลบไปจากหน้าจัดการกลุ่ม ต้องเลิกกรอง
+    // ไม่งั้นรายการจะว่างเปล่าโดยผู้ใช้ไม่รู้ว่าเพราะอะไร
+    if (_tagFilter != null && !ContactTag.all.contains(_tagFilter)) {
+      _tagFilter = null;
+    }
+
     setState(() {
       _loading = true;
       _error = null;
@@ -225,8 +230,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
   String _asText(Contact contact) {
     final lines = <String>[
       contact.name,
-      'โทร: ${contact.phone}',
-      'อีเมล: ${contact.email}',
+      if (contact.phone.isNotEmpty) 'โทร: ${contact.phone}',
+      if (contact.email.isNotEmpty) 'อีเมล: ${contact.email}',
       'กลุ่ม: ${contact.tag.label}',
       if (contact.instagram.isNotEmpty) 'IG: ${contact.instagram}',
       if (contact.lineId.isNotEmpty) 'LINE: ${contact.lineId}',
@@ -431,8 +436,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
     if (error != null) {
       return EmptyState(
         icon: Icons.error_outline,
-        title: 'เปิดฐานข้อมูลไม่สำเร็จ',
-        message: 'โหมดที่ใช้: $webDatabaseMode\n\n$error',
+        title: 'เปิดข้อมูลไม่สำเร็จ',
+        message: 'ลองปิดแล้วเปิดแอปใหม่อีกครั้ง '
+            'ถ้ายังไม่หายให้แจ้งข้อความด้านล่างนี้กับผู้ดูแล\n\n$error',
         color: AppColors.danger,
       );
     }

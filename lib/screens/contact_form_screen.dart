@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../models/contact.dart';
+import '../data/tag_repository.dart';
 import '../models/contact_tag.dart';
 import '../theme/app_theme.dart';
 import '../utils/birthday.dart';
@@ -11,6 +12,7 @@ import '../utils/image_tools.dart';
 import '../utils/validators.dart';
 import '../widgets/avatar_picker.dart';
 import '../widgets/content_width.dart';
+import 'tags_screen.dart';
 
 /// หน้าฟอร์มสำหรับเพิ่มรายชื่อใหม่ และแก้ไขรายชื่อเดิม
 ///
@@ -59,7 +61,8 @@ class _ContactFormScreenState extends State<ContactFormScreen> {
     _phoneController = TextEditingController(text: initial?.phone ?? '');
     _emailController = TextEditingController(text: initial?.email ?? '');
     _noteController = TextEditingController(text: initial?.note ?? '');
-    _instagramController = TextEditingController(text: initial?.instagram ?? '');
+    _instagramController =
+        TextEditingController(text: initial?.instagram ?? '');
     _lineController = TextEditingController(text: initial?.lineId ?? '');
     _facebookController = TextEditingController(text: initial?.facebook ?? '');
     _isFavorite = initial?.isFavorite ?? false;
@@ -132,9 +135,38 @@ class _ContactFormScreenState extends State<ContactFormScreen> {
     }
   }
 
+  /// สร้างกลุ่มใหม่จากในฟอร์มเลย แล้วเลือกกลุ่มนั้นให้ทันที
+  ///
+  /// ทำที่นี่ได้เพราะถ้าต้องออกไปสร้างที่หน้าตั้งค่าก่อน
+  /// ผู้ใช้จะเสียข้อมูลที่กรอกค้างไว้ในฟอร์ม
+  Future<void> _createTag() async {
+    final created = await showTagEditor(context);
+    if (created == null) return;
+
+    await TagRepository().save(created);
+    if (!mounted) return;
+    setState(() => _tag = created);
+  }
+
   void _save() {
     // validate จะสั่งให้ทุก TextFormField ตรวจตัวเองและแสดงข้อความแดงใต้ช่อง
     if (!_formKey.currentState!.validate()) return;
+
+    // เบอร์กับอีเมลไม่บังคับทีละช่อง แต่ต้องมีช่องทางติดต่ออย่างน้อยหนึ่งช่อง
+    // ตรวจตรงนี้เพราะเป็นเงื่อนไขข้ามหลายช่อง ตัวตรวจของแต่ละช่องทำแทนไม่ได้
+    final missing = Validators.anyContact([
+      _phoneController.text,
+      _emailController.text,
+      _instagramController.text,
+      _lineController.text,
+      _facebookController.text,
+    ]);
+    if (missing != null) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(missing)));
+      return;
+    }
 
     final now = DateTime.now();
     final initial = widget.initial;
@@ -203,7 +235,7 @@ class _ContactFormScreenState extends State<ContactFormScreen> {
                   controller: _nameController,
                   textInputAction: TextInputAction.next,
                   decoration: const InputDecoration(
-                    labelText: 'ชื่อ',
+                    labelText: 'ชื่อ (ต้องกรอก)',
                     hintText: 'เช่น สมชาย ใจดี',
                     prefixIcon: Icon(Icons.person_outline),
                   ),
@@ -215,7 +247,7 @@ class _ContactFormScreenState extends State<ContactFormScreen> {
                   keyboardType: TextInputType.phone,
                   textInputAction: TextInputAction.next,
                   decoration: const InputDecoration(
-                    labelText: 'เบอร์โทร',
+                    labelText: 'เบอร์โทร (ไม่บังคับ)',
                     hintText: 'เช่น 0812345678',
                     prefixIcon: Icon(Icons.phone_outlined),
                   ),
@@ -227,7 +259,7 @@ class _ContactFormScreenState extends State<ContactFormScreen> {
                   keyboardType: TextInputType.emailAddress,
                   textInputAction: TextInputAction.next,
                   decoration: const InputDecoration(
-                    labelText: 'อีเมล',
+                    labelText: 'อีเมล (ไม่บังคับ)',
                     hintText: 'เช่น somchai@mail.com',
                     prefixIcon: Icon(Icons.mail_outline),
                   ),
@@ -272,6 +304,7 @@ class _ContactFormScreenState extends State<ContactFormScreen> {
                 _TagPicker(
                   selected: _tag,
                   onChanged: (tag) => setState(() => _tag = tag),
+                  onCreate: _createTag,
                 ),
                 const SizedBox(height: AppSpacing.md),
                 _BirthdayField(
@@ -333,10 +366,17 @@ class _ContactFormScreenState extends State<ContactFormScreen> {
 /// ใช้ปุ่มให้เลือกแทนช่องพิมพ์ เพราะกลุ่มมีไม่กี่แบบ และการพิมพ์เองจะทำให้
 /// เกิดกลุ่มสะกดต่างกันเล็กน้อยจนกรองไม่เจอ
 class _TagPicker extends StatelessWidget {
-  const _TagPicker({required this.selected, required this.onChanged});
+  const _TagPicker({
+    required this.selected,
+    required this.onChanged,
+    required this.onCreate,
+  });
 
   final ContactTag selected;
   final ValueChanged<ContactTag> onChanged;
+
+  /// เปิดกล่องสร้างกลุ่มใหม่โดยไม่ต้องออกจากฟอร์ม
+  final VoidCallback onCreate;
 
   @override
   Widget build(BuildContext context) {
@@ -348,29 +388,40 @@ class _TagPicker extends StatelessWidget {
         Wrap(
           spacing: AppSpacing.gap,
           runSpacing: AppSpacing.gap,
-          children: ContactTag.values.map((tag) {
-            final active = tag == selected;
-            return ChoiceChip(
-              selected: active,
-              onSelected: (_) => onChanged(tag),
-              avatar: Icon(
-                tag.icon,
-                size: 16,
-                color: active ? tag.color : AppColors.textSecondary,
-              ),
-              label: Text(tag.label),
+          children: [
+            ...ContactTag.all.map((tag) {
+              final active = tag == selected;
+              return ChoiceChip(
+                selected: active,
+                onSelected: (_) => onChanged(tag),
+                avatar: Icon(
+                  tag.icon,
+                  size: 16,
+                  color: active ? tag.color : AppColors.textSecondary,
+                ),
+                label: Text(tag.label),
+                backgroundColor: AppColors.surface,
+                selectedColor: tag.color.withValues(alpha: 0.18),
+                side: BorderSide(
+                  color: active ? tag.color : AppColors.divider,
+                ),
+                labelStyle: TextStyle(
+                  color: active ? tag.color : AppColors.textPrimary,
+                  fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+                ),
+                showCheckmark: false,
+              );
+            }),
+            // ปุ่มสร้างกลุ่มใหม่ วางท้ายสุดเพราะใช้ไม่บ่อยเท่าการเลือกกลุ่มที่มีอยู่
+            ActionChip(
+              onPressed: onCreate,
+              avatar: const Icon(Icons.add, size: 16, color: AppColors.primary),
+              label: const Text('เพิ่มกลุ่ม'),
               backgroundColor: AppColors.surface,
-              selectedColor: tag.color.withValues(alpha: 0.18),
-              side: BorderSide(
-                color: active ? tag.color : AppColors.divider,
-              ),
-              labelStyle: TextStyle(
-                color: active ? tag.color : AppColors.textPrimary,
-                fontWeight: active ? FontWeight.w600 : FontWeight.w400,
-              ),
-              showCheckmark: false,
-            );
-          }).toList(),
+              side: const BorderSide(color: AppColors.divider),
+              labelStyle: const TextStyle(color: AppColors.primary),
+            ),
+          ],
         ),
       ],
     );
