@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import '../utils/app_transitions.dart';
 
 /// กราฟแท่งแสดงจำนวนรายชื่อที่เพิ่มในแต่ละวัน 7 วันย้อนหลัง
 ///
@@ -13,11 +14,15 @@ class WeeklyBarChart extends StatelessWidget {
   /// ค่า 7 ช่อง เรียงจากเก่าไปใหม่ ช่องสุดท้ายคือวันนี้
   final List<int> values;
 
-  static const double _chartHeight = 132;
+  static const double _chartHeight = 150;
+
+  /// ที่ที่ต้องกันไว้ให้ตัวเลขด้านบนและป้ายวันด้านล่างของแต่ละแท่ง
+  static const double _labelSpace = 52;
 
   @override
   Widget build(BuildContext context) {
     final maxValue = values.fold<int>(0, (m, v) => v > m ? v : m);
+    final weekTotal = values.fold<int>(0, (sum, v) => sum + v);
     final labels = _weekdayLabels();
 
     return Card(
@@ -27,8 +32,20 @@ class WeeklyBarChart extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('เพิ่มรายชื่อ 7 วันล่าสุด',
-                style: Theme.of(context).textTheme.titleMedium),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'เพิ่มรายชื่อ 7 วันล่าสุด',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                Text(
+                  'รวม $weekTotal',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
             const SizedBox(height: AppSpacing.sm),
             SizedBox(
               height: _chartHeight,
@@ -42,25 +59,45 @@ class WeeklyBarChart extends StatelessWidget {
 
                   return Expanded(
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.end,
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
                             '$value',
-                            style: const TextStyle(
-                              color: AppColors.textSecondary,
+                            style: TextStyle(
+                              // วันที่ยังไม่มีข้อมูลให้จางลง สายตาจะได้พุ่งไปที่วันที่มีค่า
+                              color: value == 0
+                                  ? AppColors.divider
+                                  : AppColors.textPrimary,
                               fontSize: 11,
+                              fontWeight:
+                                  isToday ? FontWeight.w700 : FontWeight.w400,
                             ),
                           ),
                           const SizedBox(height: AppSpacing.xs),
                           // ความสูงสูงสุดของแท่ง = พื้นที่กราฟ ลบที่ของตัวเลขและป้ายวัน
-                          SizedBox(
-                            height: (_chartHeight - 46) * ratio + 4,
+                          // บวก 4 ไว้เสมอ เพื่อให้วันที่ค่าเป็น 0 ยังเห็นเป็นขีดบาง ๆ
+                          //
+                          // แท่งวิ่งขึ้นจากศูนย์ ไล่ทีละแท่งจากซ้ายไปขวา
+                          // ให้ความรู้สึกว่าเวลาเดินไปข้างหน้าตรงกับที่กราฟสื่อ
+                          TweenAnimationBuilder<double>(
+                            tween: Tween(begin: 0, end: ratio),
+                            duration: AppMotion.disabled(context)
+                                ? Duration.zero
+                                : AppMotion.slow + Duration(milliseconds: 60 * i),
+                            curve: AppMotion.curve,
+                            builder: (context, value, child) => SizedBox(
+                              height: (_chartHeight - _labelSpace) * value + 4,
+                              child: child,
+                            ),
                             child: Container(
                               decoration: BoxDecoration(
-                                color: isToday ? AppColors.primary : AppColors.surfaceHigh,
+                                color: isToday
+                                    ? AppColors.primary
+                                    : AppColors.surfaceHigh,
                                 borderRadius: BorderRadius.circular(6),
                               ),
                             ),
@@ -68,9 +105,13 @@ class WeeklyBarChart extends StatelessWidget {
                           const SizedBox(height: AppSpacing.gap),
                           Text(
                             labels[i],
-                            style: const TextStyle(
-                              color: AppColors.textSecondary,
+                            style: TextStyle(
+                              color: isToday
+                                  ? AppColors.primary
+                                  : AppColors.textSecondary,
                               fontSize: 11,
+                              fontWeight:
+                                  isToday ? FontWeight.w700 : FontWeight.w400,
                             ),
                           ),
                         ],
@@ -80,6 +121,13 @@ class WeeklyBarChart extends StatelessWidget {
                 }),
               ),
             ),
+            if (weekTotal == 0) ...[
+              const SizedBox(height: AppSpacing.gap),
+              Text(
+                'ยังไม่มีรายชื่อที่เพิ่มในช่วง 7 วันนี้',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
           ],
         ),
       ),

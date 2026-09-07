@@ -1,8 +1,8 @@
+import '../models/app_settings.dart';
 import '../models/contact.dart';
+import '../models/contact_tag.dart';
+import '../utils/birthday.dart';
 import 'database_helper.dart';
-
-/// ลำดับการเรียงรายชื่อที่ผู้ใช้สลับได้จากหน้ารายการ
-enum ContactSort { newest, name }
 
 /// ตัวเลขสรุปสำหรับหน้าแดชบอร์ด
 class DirectoryStats {
@@ -11,8 +11,9 @@ class DirectoryStats {
     required this.favorites,
     required this.addedThisWeek,
     required this.perDay,
-    required this.topInitials,
     required this.recent,
+    required this.perTag,
+    required this.upcomingBirthdays,
   });
 
   final int total;
@@ -22,11 +23,14 @@ class DirectoryStats {
   /// จำนวนรายชื่อที่เพิ่มในแต่ละวัน 7 วันย้อนหลัง เรียงจากเก่าไปใหม่
   final List<int> perDay;
 
-  /// อักษรขึ้นต้นที่พบบ่อย เรียงจากมากไปน้อย
-  final List<MapEntry<String, int>> topInitials;
-
-  /// 3 รายชื่อล่าสุด
+  /// 5 รายชื่อล่าสุด
   final List<Contact> recent;
+
+  /// จำนวนคนในแต่ละกลุ่ม เรียงจากมากไปน้อย เอาเฉพาะกลุ่มที่มีคนจริง
+  final List<MapEntry<ContactTag, int>> perTag;
+
+  /// คนที่ใกล้ถึงวันเกิดภายใน 30 วัน เรียงจากใกล้ที่สุด
+  final List<Contact> upcomingBirthdays;
 }
 
 /// ชั้นกลางระหว่างหน้าจอกับฐานข้อมูล
@@ -46,6 +50,7 @@ class ContactRepository {
   Future<List<Contact>> getContacts({
     String query = '',
     bool favoritesOnly = false,
+    ContactTag? tag,
     ContactSort sort = ContactSort.newest,
   }) async {
     final db = await _helper.database;
@@ -55,12 +60,17 @@ class ContactRepository {
 
     final keyword = query.trim();
     if (keyword.isNotEmpty) {
-      where.add('(name LIKE ? OR phone LIKE ? OR email LIKE ?)');
+      // ค้นบันทึกย่อด้วย จะได้หาคนจากสิ่งที่จำได้ เช่น "เจอที่งานสัมมนา"
+      where.add('(name LIKE ? OR phone LIKE ? OR email LIKE ? OR note LIKE ?)');
       final pattern = '%$keyword%';
-      args.addAll([pattern, pattern, pattern]);
+      args.addAll([pattern, pattern, pattern, pattern]);
     }
     if (favoritesOnly) {
       where.add('is_favorite = 1');
+    }
+    if (tag != null) {
+      where.add('tag = ?');
+      args.add(tag.label);
     }
 
     final rows = await db.query(
@@ -74,6 +84,19 @@ class ContactRepository {
     );
 
     return rows.map(Contact.fromMap).toList();
+  }
+
+  /// นับจำนวนรายชื่อโดยไม่ต้องอ่านทุกแถวขึ้นมา
+  ///
+  /// แถบข้างต้องการแค่ตัวเลข การดึงทั้งตารางมานับใน Dart จะเปลืองเกินจำเป็น
+  /// จึงให้ SQLite นับให้ด้วย COUNT(*) แล้วส่งกลับมาแถวเดียว
+  Future<int> count({bool favoritesOnly = false}) async {
+    final db = await _helper.database;
+    final rows = await db.rawQuery(
+      'SELECT COUNT(*) AS total FROM ${DatabaseHelper.tableContacts}'
+      '${favoritesOnly ? ' WHERE is_favorite = 1' : ''}',
+    );
+    return (rows.first['total'] as int?) ?? 0;
   }
 
   Future<int> insert(Contact contact) async {
@@ -104,8 +127,17 @@ class ContactRepository {
     return update(contact.copyWith(isFavorite: !contact.isFavorite));
   }
 
+  /// ลบทุกรายชื่อในสมุด ใช้จากหน้าตั้งค่าเท่านั้นและต้องยืนยันก่อนเสมอ
+  /// คืนจำนวนแถวที่ลบไป เพื่อเอาไปบอกผู้ใช้ว่าลบไปกี่คน
+  Future<int> deleteAll() async {
+    final db = await _helper.database;
+    return db.delete(DatabaseHelper.tableContacts);
+  }
+
   /// รวบรวมตัวเลขทั้งหมดที่หน้าแดชบอร์ดต้องใช้ในการอ่านฐานข้อมูลรอบเดียว
-  Future<DirectoryStats> loadStats() async {
+  ///
+  /// [birthdayWindowDays] คือช่วงที่นับว่า "ใกล้ถึง" ผู้ใช้ปรับได้ในหน้าตั้งค่า
+  Future<DirectoryStats> loadStats({int birthdayWindowDays = 30}) async {
     final all = await getContacts();
 
     final today = DateTime.now();
@@ -122,22 +154,30 @@ class ContactRepository {
       }
     }
 
-    final counts = <String, int>{};
+    final recent = await getContacts(sort: ContactSort.newest);
+
+    final tagCounts = <ContactTag, int>{};
     for (final contact in all) {
-      counts.update(contact.initial, (v) => v + 1, ifAbsent: () => 1);
+      tagCounts.update(contact.tag, (v) => v + 1, ifAbsent: () => 1);
     }
-    final topInitials = counts.entries.toList()
+    final perTag = tagCounts.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
 
-    final recent = await getContacts(sort: ContactSort.newest);
+    // เอาเฉพาะคนที่กรอกวันเกิดไว้ และวันเกิดรอบถัดไปอยู่ภายใน 30 วัน
+    final upcoming = all.where((c) => c.birthday != null).toList()
+      ..removeWhere(
+          (c) => Birthday.daysUntil(c.birthday!) > birthdayWindowDays)
+      ..sort((a, b) => Birthday.daysUntil(a.birthday!)
+          .compareTo(Birthday.daysUntil(b.birthday!)));
 
     return DirectoryStats(
       total: all.length,
       favorites: all.where((c) => c.isFavorite).length,
       addedThisWeek: perDay.fold(0, (sum, n) => sum + n),
       perDay: perDay,
-      topInitials: topInitials.take(5).toList(),
-      recent: recent.take(3).toList(),
+      recent: recent.take(5).toList(),
+      perTag: perTag,
+      upcomingBirthdays: upcoming.take(5).toList(),
     );
   }
 }

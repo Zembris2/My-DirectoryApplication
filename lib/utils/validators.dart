@@ -29,7 +29,9 @@ class Validators {
   static String? email(String? value) {
     final text = (value ?? '').trim();
     if (text.isEmpty) return 'กรุณากรอกอีเมล';
-    if (!_emailPattern.hasMatch(text)) return 'รูปแบบอีเมลไม่ถูกต้อง เช่น name@mail.com';
+    if (!_emailPattern.hasMatch(text)) {
+      return 'รูปแบบอีเมลไม่ถูกต้อง เช่น name@mail.com';
+    }
     return null;
   }
 }

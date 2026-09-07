@@ -1,24 +1,46 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../data/contact_repository.dart';
+import '../data/db_factory.dart';
+import '../models/app_settings.dart';
 import '../models/contact.dart';
+import '../models/contact_tag.dart';
 import '../theme/app_theme.dart';
+import '../utils/app_transitions.dart';
+import '../utils/birthday.dart';
 import '../widgets/contact_card.dart';
+import '../widgets/content_width.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/fade_slide_in.dart';
+import '../widgets/more_menu.dart';
+import '../widgets/tag_filter_bar.dart';
 import 'contact_form_screen.dart';
 
 /// หน้ารายการรายชื่อทั้งหมด
 ///
-/// รวมงานหลัก 5 อย่างไว้ที่นี่ ค้นหา กรองรายการโปรด เรียงลำดับ
-/// เปิดฟอร์มเพิ่ม/แก้ไข และลบพร้อมกล่องยืนยัน
+/// รวมงานหลักไว้ที่นี่ ค้นหา กรองรายการโปรด กรองตามกลุ่ม เรียงลำดับ
+/// เปิดฟอร์มเพิ่ม/แก้ไข ลบพร้อมกล่องยืนยันและปุ่มเลิกทำ
+/// และเมนูคัดลอกข้อมูลเมื่อกดการ์ดค้าง
 class ContactsScreen extends StatefulWidget {
   const ContactsScreen({
     super.key,
     required this.repository,
     required this.onDataChanged,
+    required this.settings,
+    required this.onOpenManual,
+    required this.onOpenSettings,
   });
 
+  /// เปิดหน้าคู่มือและหน้าตั้งค่าจากเมนูดึงลง หน้าแม่เป็นคนพาไป
+  final VoidCallback onOpenManual;
+  final VoidCallback onOpenSettings;
+
   final ContactRepository repository;
+
+  /// ค่าตั้งค่าปัจจุบัน ใช้กำหนดการเรียงเริ่มต้น การถามยืนยันก่อนลบ
+  /// และการแสดงบันทึกย่อบนการ์ด
+  final AppSettings settings;
 
   /// แจ้งหน้าแม่เมื่อข้อมูลเปลี่ยน เพื่อให้แดชบอร์ดโหลดตัวเลขใหม่
   final VoidCallback onDataChanged;
@@ -33,12 +55,28 @@ class _ContactsScreenState extends State<ContactsScreen> {
   List<Contact> _contacts = [];
   bool _loading = true;
   bool _favoritesOnly = false;
-  ContactSort _sort = ContactSort.newest;
+  ContactTag? _tagFilter;
+  late ContactSort _sort;
+
+  /// ข้อความผิดพลาดจากฐานข้อมูล ถ้าไม่ว่างจะแสดงแทนรายการ
+  String? _error;
 
   @override
   void initState() {
     super.initState();
+    _sort = widget.settings.defaultSort;
     _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant ContactsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // เปลี่ยนการเรียงเริ่มต้นในหน้าตั้งค่าแล้วต้องเห็นผลทันที
+    // แต่ไม่ทับค่าที่ผู้ใช้เพิ่งกดสลับเองในหน้านี้
+    if (oldWidget.settings.defaultSort != widget.settings.defaultSort) {
+      _sort = widget.settings.defaultSort;
+      _load();
+    }
   }
 
   @override
@@ -49,30 +87,48 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
   /// อ่านข้อมูลใหม่จากฐานข้อมูลตามเงื่อนไขที่เลือกอยู่
   Future<void> _load() async {
-    setState(() => _loading = true);
-    final result = await widget.repository.getContacts(
-      query: _searchController.text,
-      favoritesOnly: _favoritesOnly,
-      sort: _sort,
-    );
-    if (!mounted) return;
     setState(() {
-      _contacts = result;
-      _loading = false;
+      _loading = true;
+      _error = null;
     });
+
+    // ถ้าฐานข้อมูลเปิดไม่ได้ ต้องจับไว้เอง ไม่งั้นวงกลมโหลดจะหมุนค้างตลอดไป
+    // โดยผู้ใช้ไม่รู้เลยว่าเกิดอะไรขึ้น
+    try {
+      final result = await widget.repository.getContacts(
+        query: _searchController.text,
+        favoritesOnly: _favoritesOnly,
+        tag: _tagFilter,
+        sort: _sort,
+      );
+      if (!mounted) return;
+      setState(() {
+        _contacts = result;
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = '$error';
+        _loading = false;
+      });
+    }
   }
 
-  void _notify(String message) {
+  void _notify(String message, {SnackBarAction? action}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
+      ..showSnackBar(SnackBar(content: Text(message), action: action));
   }
 
   Future<void> _openForm({Contact? contact}) async {
     final result = await Navigator.of(context).push<Contact>(
-      MaterialPageRoute(
-        builder: (_) => ContactFormScreen(initial: contact),
+      AppMotion.slideRoute(
+        ContactFormScreen(
+          initial: contact,
+          defaultTag: widget.settings.defaultTag,
+        ),
       ),
     );
     if (result == null) return;
@@ -89,8 +145,15 @@ class _ContactsScreenState extends State<ContactsScreen> {
     await _load();
   }
 
-  /// ถามยืนยันก่อนลบเสมอ กันกดพลาดแล้วข้อมูลหายถาวร
+  /// ถามยืนยันก่อนลบ กันกดพลาดแล้วข้อมูลหายถาวร
+  ///
+  /// ปิดการถามได้จากหน้าตั้งค่า เพราะยังมีปุ่มเลิกทำรับไว้อีกชั้น
   Future<void> _confirmDelete(Contact contact) async {
+    if (!widget.settings.confirmBeforeDelete) {
+      await _delete(contact);
+      return;
+    }
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -112,9 +175,26 @@ class _ContactsScreenState extends State<ContactsScreen> {
     );
 
     if (confirmed != true) return;
+    await _delete(contact);
+  }
 
+  /// ลบจริงพร้อมเปิดทางให้เลิกทำ แยกออกมาเพราะเรียกได้สองทาง
+  /// ทั้งแบบถามยืนยันก่อนและแบบลบทันที
+  Future<void> _delete(Contact contact) async {
     await widget.repository.delete(contact.id!);
-    _notify('ลบ "${contact.name}" แล้ว');
+    // เก็บข้อมูลทั้งแถวไว้ในตัวแปร จึงเขียนกลับคืนได้ทั้งดวงรวมถึง id เดิม
+    // ถ้าผู้ใช้เพิ่งรู้ตัวว่ากดผิด
+    _notify(
+      'ลบ "${contact.name}" แล้ว',
+      action: SnackBarAction(
+        label: 'เลิกทำ',
+        onPressed: () async {
+          await widget.repository.insert(contact);
+          widget.onDataChanged();
+          await _load();
+        },
+      ),
+    );
     widget.onDataChanged();
     await _load();
   }
@@ -125,12 +205,105 @@ class _ContactsScreenState extends State<ContactsScreen> {
     await _load();
   }
 
+  Future<void> _copy(String text, String what) async {
+    await Clipboard.setData(ClipboardData(text: text));
+    _notify('คัดลอก$whatแล้ว');
+  }
+
+  /// รวมข้อมูลของคนหนึ่งคนเป็นข้อความบรรทัดเดียวจบ พร้อมวางในแชต
+  String _asText(Contact contact) {
+    final lines = <String>[
+      contact.name,
+      'โทร: ${contact.phone}',
+      'อีเมล: ${contact.email}',
+      'กลุ่ม: ${contact.tag.label}',
+      if (contact.instagram.isNotEmpty) 'IG: ${contact.instagram}',
+      if (contact.lineId.isNotEmpty) 'LINE: ${contact.lineId}',
+      if (contact.facebook.isNotEmpty) 'Facebook: ${contact.facebook}',
+      if (contact.birthday != null)
+        'วันเกิด: ${Birthday.formatThai(contact.birthday!)}',
+      if (contact.note.isNotEmpty) 'บันทึก: ${contact.note}',
+    ];
+    return lines.join('\n');
+  }
+
+  /// เมนูที่ขึ้นเมื่อกดการ์ดค้าง
+  Future<void> _showActions(Contact contact) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surfaceHigh,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppSpacing.radius),
+        ),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              child: Text(
+                contact.name,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            ListTile(
+              leading:
+                  const Icon(Icons.phone_outlined, color: AppColors.primary),
+              title: const Text('คัดลอกเบอร์โทร'),
+              subtitle: Text(contact.phone),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                _copy(contact.phone, 'เบอร์โทร');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.mail_outline, color: AppColors.primary),
+              title: const Text('คัดลอกอีเมล'),
+              subtitle: Text(contact.email),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                _copy(contact.email, 'อีเมล');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.copy_all, color: AppColors.primary),
+              title: const Text('คัดลอกข้อมูลทั้งหมด'),
+              subtitle: const Text('พร้อมวางในแชตได้เลย'),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                _copy(_asText(contact), 'ข้อมูลของ "${contact.name}"');
+              },
+            ),
+            const SizedBox(height: AppSpacing.gap),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// คัดลอกทั้งสมุดตามที่กรองอยู่ตอนนี้ ใช้ส่งต่อให้คนอื่นทีเดียว
+  Future<void> _copyAll() async {
+    if (_contacts.isEmpty) {
+      _notify('ยังไม่มีรายชื่อให้คัดลอก');
+      return;
+    }
+    final text = _contacts.map(_asText).join('\n\n');
+    await _copy(text, 'รายชื่อ ${_contacts.length} คน');
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('สมุดรายชื่อ'),
         actions: [
+          IconButton(
+            tooltip: 'คัดลอกรายชื่อที่แสดงอยู่ทั้งหมด',
+            onPressed: _copyAll,
+            icon: const Icon(Icons.copy_all_outlined),
+          ),
           IconButton(
             tooltip: _sort == ContactSort.newest
                 ? 'กำลังเรียงตามใหม่สุด'
@@ -149,69 +322,85 @@ class _ContactsScreenState extends State<ContactsScreen> {
                   : Icons.sort_by_alpha,
             ),
           ),
-          const SizedBox(width: AppSpacing.xs),
+          MoreMenu(
+            onOpenManual: widget.onOpenManual,
+            onOpenSettings: widget.onOpenSettings,
+          ),
         ],
       ),
       body: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.md,
-                0,
-                AppSpacing.md,
-                AppSpacing.gap,
-              ),
-              child: TextField(
-                controller: _searchController,
-                // ค้นทันทีทุกตัวอักษรที่พิมพ์ ไม่ต้องกดปุ่มค้นหา
-                onChanged: (_) => _load(),
-                decoration: InputDecoration(
-                  hintText: 'ค้นหาชื่อ เบอร์ หรืออีเมล',
-                  prefixIcon: const Icon(Icons.search),
-                  suffixIcon: _searchController.text.isEmpty
-                      ? null
-                      : IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () {
-                            _searchController.clear();
-                            _load();
-                          },
-                        ),
+        child: ContentWidth(
+          maxWidth: AppSpacing.maxWideContentWidth,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.md,
+                  0,
+                  AppSpacing.md,
+                  AppSpacing.gap,
+                ),
+                child: TextField(
+                  controller: _searchController,
+                  // ค้นทันทีทุกตัวอักษรที่พิมพ์ ไม่ต้องกดปุ่มค้นหา
+                  onChanged: (_) => _load(),
+                  decoration: InputDecoration(
+                    hintText: 'ค้นหาชื่อ เบอร์ อีเมล หรือบันทึกย่อ',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _searchController.text.isEmpty
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () {
+                              _searchController.clear();
+                              _load();
+                            },
+                          ),
+                  ),
                 ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-              child: Row(
-                children: [
-                  FilterChip(
-                    selected: _favoritesOnly,
-                    onSelected: (value) {
-                      setState(() => _favoritesOnly = value);
-                      _load();
-                    },
-                    avatar: Icon(
-                      _favoritesOnly ? Icons.star : Icons.star_border,
-                      size: 18,
-                      color: _favoritesOnly ? AppColors.accent : AppColors.textSecondary,
-                    ),
-                    label: const Text('รายการโปรด'),
-                    backgroundColor: AppColors.surface,
-                    selectedColor: AppColors.surfaceHigh,
-                    side: const BorderSide(color: AppColors.divider),
-                  ),
-                  const Spacer(),
-                  Text(
-                    '${_contacts.length} รายชื่อ',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
+              TagFilterBar(
+                selected: _tagFilter,
+                onChanged: (tag) {
+                  setState(() => _tagFilter = tag);
+                  _load();
+                },
               ),
-            ),
-            const SizedBox(height: AppSpacing.gap),
-            Expanded(child: _buildList()),
-          ],
+              const SizedBox(height: AppSpacing.gap),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+                child: Row(
+                  children: [
+                    FilterChip(
+                      selected: _favoritesOnly,
+                      onSelected: (value) {
+                        setState(() => _favoritesOnly = value);
+                        _load();
+                      },
+                      avatar: Icon(
+                        _favoritesOnly ? Icons.star : Icons.star_border,
+                        size: 18,
+                        color: _favoritesOnly
+                            ? AppColors.accent
+                            : AppColors.textSecondary,
+                      ),
+                      label: const Text('รายการโปรด'),
+                      backgroundColor: AppColors.surface,
+                      selectedColor: AppColors.surfaceHigh,
+                      side: const BorderSide(color: AppColors.divider),
+                    ),
+                    const Spacer(),
+                    Text(
+                      '${_contacts.length} รายชื่อ',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: AppSpacing.gap),
+              Expanded(child: _buildList()),
+            ],
+          ),
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -227,35 +416,96 @@ class _ContactsScreenState extends State<ContactsScreen> {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (_contacts.isEmpty) {
-      final searching = _searchController.text.trim().isNotEmpty;
+    final error = _error;
+    if (error != null) {
       return EmptyState(
-        icon: searching ? Icons.search_off : Icons.contacts_outlined,
-        title: searching ? 'ไม่พบรายชื่อที่ค้นหา' : 'ยังไม่มีรายชื่อ',
-        message: searching
-            ? 'ลองพิมพ์คำอื่น หรือล้างช่องค้นหา'
+        icon: Icons.error_outline,
+        title: 'เปิดฐานข้อมูลไม่สำเร็จ',
+        message: 'โหมดที่ใช้: $webDatabaseMode\n\n$error',
+        color: AppColors.danger,
+      );
+    }
+
+    if (_contacts.isEmpty) {
+      final filtering =
+          _searchController.text.trim().isNotEmpty || _tagFilter != null;
+      return EmptyState(
+        icon: filtering ? Icons.search_off : Icons.contacts_outlined,
+        title: filtering ? 'ไม่พบรายชื่อที่ค้นหา' : 'ยังไม่มีรายชื่อ',
+        message: filtering
+            ? 'ลองพิมพ์คำอื่น เปลี่ยนกลุ่ม หรือล้างช่องค้นหา'
             : 'กดปุ่ม "เพิ่มรายชื่อ" ด้านล่างขวาเพื่อบันทึกคนแรก',
       );
     }
 
-    return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.md,
-        0,
-        AppSpacing.md,
-        96, // เว้นที่ให้ปุ่มลอยไม่ทับการ์ดใบสุดท้าย
-      ),
-      itemCount: _contacts.length,
-      separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
-      itemBuilder: (context, index) {
-        final contact = _contacts[index];
-        return ContactCard(
-          contact: contact,
-          onTap: () => _openForm(contact: contact),
-          onToggleFavorite: () => _toggleFavorite(contact),
-          onDelete: () => _confirmDelete(contact),
+    // จอกว้างจัดการ์ดเป็นสองคอลัมน์ ได้เห็นรายชื่อต่อหนึ่งหน้าจอมากขึ้นเท่าตัว
+    // ส่วนจอมือถือยังเรียงคอลัมน์เดียวเหมือนเดิม
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns =
+            constraints.maxWidth >= AppSpacing.twoColumnBreakpoint ? 2 : 1;
+
+        const padding = EdgeInsets.fromLTRB(
+          AppSpacing.md,
+          0,
+          AppSpacing.md,
+          96, // เว้นที่ให้ปุ่มลอยไม่ทับการ์ดใบสุดท้าย
+        );
+
+        if (columns == 1) {
+          return ListView.separated(
+            padding: padding,
+            itemCount: _contacts.length,
+            separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
+            itemBuilder: (context, index) => _animated(index, _contacts[index]),
+          );
+        }
+
+        final cardWidth = (constraints.maxWidth -
+                padding.horizontal -
+                AppSpacing.sm * (columns - 1)) /
+            columns;
+
+        return SingleChildScrollView(
+          padding: padding,
+          child: Wrap(
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
+            children: [
+              for (var i = 0; i < _contacts.length; i++)
+                SizedBox(
+                  width: cardWidth,
+                  child: _animated(i, _contacts[i]),
+                ),
+            ],
+          ),
         );
       },
+    );
+  }
+
+  /// ห่อการ์ดด้วยภาพเคลื่อนไหวโผล่เข้า ไล่ทีละใบจากบนลงล่าง
+  ///
+  /// จำกัดการหน่วงไว้ไม่เกินใบที่แปด ถ้าปล่อยให้ไล่ไปเรื่อย ๆ
+  /// คนที่มีรายชื่อร้อยคนจะต้องนั่งรอการ์ดใบท้าย ๆ นานเกินเหตุ
+  /// ใส่ key ตามรหัสของคน เพื่อให้ Flutter รู้ว่าการ์ดใบไหนคือใบเดิม
+  /// ตอนกรองรายการ การ์ดที่ยังอยู่จึงไม่เล่นภาพเคลื่อนไหวซ้ำ
+  Widget _animated(int index, Contact contact) {
+    return FadeSlideIn(
+      key: ValueKey(contact.id),
+      delay: Duration(milliseconds: 30 * (index > 8 ? 8 : index)),
+      child: _card(contact),
+    );
+  }
+
+  Widget _card(Contact contact) {
+    return ContactCard(
+      contact: contact,
+      showNote: widget.settings.showNoteOnCard,
+      onTap: () => _openForm(contact: contact),
+      onLongPress: () => _showActions(contact),
+      onToggleFavorite: () => _toggleFavorite(contact),
+      onDelete: () => _confirmDelete(contact),
     );
   }
 }

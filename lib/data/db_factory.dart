@@ -5,4 +5,6 @@
 ///
 /// การใช้ conditional export ทำให้โค้ดฝั่งเว็บไม่ถูกคอมไพล์ตอน build มือถือ
 /// และกลับกัน จึงไม่ต้องแยกไฟล์ main คนละชุด
+library;
+
 export 'db_factory_io.dart' if (dart.library.js_interop) 'db_factory_web.dart';

@@ -10,11 +10,16 @@ class EmptyState extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.message,
+    this.color = AppColors.violet,
   });
 
   final IconData icon;
   final String title;
   final String message;
+
+  /// สีของวงกลมหลังไอคอน เปลี่ยนได้เพื่อสื่ออารมณ์ต่างกัน
+  /// เช่น ใช้สีแดงเมื่อเป็นข้อความแจ้งข้อผิดพลาด
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
@@ -24,8 +29,15 @@ class EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 56, color: AppColors.textSecondary),
-            const SizedBox(height: AppSpacing.sm),
+            Container(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              decoration: BoxDecoration(
+                gradient: AppGradients.tint(color),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, size: 44, color: color),
+            ),
+            const SizedBox(height: AppSpacing.md),
             Text(title, style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: AppSpacing.gap),
             Text(
