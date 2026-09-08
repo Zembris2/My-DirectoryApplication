@@ -116,7 +116,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     padding: const EdgeInsets.only(bottom: AppSpacing.gap),
                     child: Text(
                       'สร้างกลุ่มของตัวเองได้ ตั้งชื่อ เลือกสีและไอคอนเอง '
-                      'กลุ่มพื้นฐาน 5 กลุ่มเปลี่ยนสีได้แต่ลบไม่ได้',
+                      'แก้ไขหรือลบกลุ่มไหนก็ได้ แต่ต้องเหลือไว้อย่างน้อย 1 กลุ่ม',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ),

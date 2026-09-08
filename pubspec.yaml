@@ -18,6 +18,9 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
+  # ใช้เฉพาะตอนสร้างภาพหน้าจอลงคู่มือ (tool/capture_screenshots_test.dart)
+  # ทำให้รันหน้าจอจริงบนเครื่องคอมได้โดยไม่ต้องเปิดมือถือหรือเบราว์เซอร์
+  sqflite_common_ffi: ^2.3.3
 
 flutter:
   uses-material-design: true
